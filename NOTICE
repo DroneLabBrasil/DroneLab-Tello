@@ -1,0 +1,12 @@
+DroneLab Tello
+
+Derived from TelloNO by MusanaINC:
+https://github.com/Monks103/TelloNO
+The original MIT copyright and permission notice are preserved in LICENSE.
+
+Protocol reference: TelloPy by hanyazou and contributors (Apache-2.0).
+Additional reference: SMerrony/tello (MIT).
+See third_party and app/src/main/assets/licenses for notices and licenses.
+
+DroneLab Tello is an independent derivative. No endorsement by Ryze, DJI,
+MusanaINC, TelloPy contributors or SMerrony is implied.

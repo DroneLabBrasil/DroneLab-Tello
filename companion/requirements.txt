@@ -1,3 +1,0 @@
-djitellopy
-pygame
-opencv-python

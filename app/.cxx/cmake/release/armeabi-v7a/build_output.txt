@@ -1,3 +1,0 @@
-Starting Build
-armeabi-v7a
-Configuring done

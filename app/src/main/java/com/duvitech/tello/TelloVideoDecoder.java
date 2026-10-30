@@ -3,6 +3,7 @@ package com.duvitech.tello;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.media.MediaMuxer;
+import android.net.Network;
 import android.util.Log;
 import android.view.Surface;
 
@@ -20,6 +21,8 @@ public class TelloVideoDecoder extends Thread {
     private MediaCodec decoder;
     private DatagramSocket socket;
     private Surface surface;
+    private final Network wifiNetwork;
+    private final boolean nativeMode;
     private volatile boolean running = false;
 
     // MP4 recording via MediaMuxer
@@ -36,7 +39,17 @@ public class TelloVideoDecoder extends Thread {
     static final byte[] SPS = {0, 0, 0, 1, 103, 66, 0, 42, (byte)149, (byte)168, 30, 0, (byte)137, (byte)249, 102, (byte)224, 32, 32, 32, 64};
     static final byte[] PPS = {0, 0, 0, 1, 104, (byte)206, 60, (byte)128};
 
-    public TelloVideoDecoder(Surface surface) { this.surface = surface; }
+    public TelloVideoDecoder(Surface surface) { this(surface, null); }
+
+    public TelloVideoDecoder(Surface surface, Network wifiNetwork) {
+        this(surface,wifiNetwork,false);
+    }
+
+    public TelloVideoDecoder(Surface surface, Network wifiNetwork, boolean nativeMode) {
+        this.surface = surface;
+        this.wifiNetwork = wifiNetwork;
+        this.nativeMode = nativeMode;
+    }
 
     public void startDecoding() { running = true; start(); }
 
@@ -44,12 +57,12 @@ public class TelloVideoDecoder extends Thread {
         running = false;
         stopRecording();
         if (socket != null && !socket.isClosed()) socket.close();
-        if (decoder != null) {
-            try { decoder.stop(); decoder.release(); } catch (Exception e) { Log.e(TAG, e.getMessage()); }
-        }
+        // The worker owns MediaCodec and releases it in finally, never concurrently
+        // with feedDecoder() on this thread.
     }
 
-    public void startRecording(String path) throws IOException {
+    public synchronized void startRecording(String path) throws IOException {
+        if (!running || decoder == null || recording) throw new IOException("Video is not ready");
         MediaFormat format = MediaFormat.createVideoFormat("video/avc", 960, 720);
         format.setInteger(MediaFormat.KEY_FRAME_RATE, 30);
         format.setByteBuffer("csd-0", ByteBuffer.wrap(SPS));
@@ -62,7 +75,7 @@ public class TelloVideoDecoder extends Thread {
         Log.d(TAG, "Recording started: " + path);
     }
 
-    public void stopRecording() {
+    public synchronized void stopRecording() {
         recording = false;
         if (muxer != null) {
             try { muxer.stop(); muxer.release(); } catch (Exception e) { Log.e(TAG, "Muxer stop: " + e.getMessage()); }
@@ -91,12 +104,16 @@ public class TelloVideoDecoder extends Thread {
     @Override
     public void run() {
         try {
-            socket = new DatagramSocket(VIDEO_PORT);
+            socket = new DatagramSocket(null);
+            socket.bind(new java.net.InetSocketAddress(VIDEO_PORT));
+            if (wifiNetwork != null) wifiNetwork.bindSocket(socket);
             initDecoder();
 
             byte[] recvBuf  = new byte[BUFFER_SIZE];
             byte[] frameBuf = new byte[MAX_FRAME_SIZE];
             int frameLen = 0;
+            int frameId = -1, expectedPacket = 0;
+            boolean lostFrame = false;
 
             socket.setSoTimeout(3000);
             Log.d(TAG, "Listening on UDP port " + VIDEO_PORT);
@@ -109,17 +126,45 @@ public class TelloVideoDecoder extends Thread {
                 } catch (java.net.SocketTimeoutException ste) {
                     continue;
                 }
+                if (!packet.getAddress().getHostAddress().equals("192.168.10.1")) continue;
                 int len = packet.getLength();
                 packetCount++;
                 if (packetCount <= 5 || packetCount % 500 == 0)
                     Log.d(TAG, "Packet #" + packetCount + " len=" + len);
 
-                if (frameLen + len > MAX_FRAME_SIZE) frameLen = 0;
-                System.arraycopy(packet.getData(), 0, frameBuf, frameLen, len);
-                frameLen += len;
+                if (nativeMode) {
+                    if (len <= 2) continue;
+                    int id=packet.getData()[0]&255, index=packet.getData()[1]&127;
+                    if(id!=frameId) {
+                        if(frameLen>0 && !lostFrame)processFrame(frameBuf,frameLen);
+                        frameId=id; frameLen=0; expectedPacket=0; lostFrame=false;
+                    }
+                    if(index!=expectedPacket || frameLen+len-2>MAX_FRAME_SIZE)lostFrame=true;
+                    expectedPacket=index+1;
+                    if(!lostFrame) {System.arraycopy(packet.getData(),2,frameBuf,frameLen,len-2);frameLen+=len-2;}
+                } else {
+                    if (frameLen + len > MAX_FRAME_SIZE) frameLen = 0;
+                    System.arraycopy(packet.getData(),0,frameBuf,frameLen,len);frameLen+=len;
+                    if(len<1460){processFrame(frameBuf,frameLen);frameLen=0;}
+                }
+            }
+        } catch (Exception e) {
+            if (running) Log.e(TAG, "Video error: " + e.getMessage());
+        } finally {
+            running = false;
+            stopRecording();
+            if (socket != null) socket.close();
+            if (decoder != null) {
+                try { decoder.stop(); } catch (Exception ignored) { }
+                try { decoder.release(); } catch (Exception ignored) { }
+                decoder = null;
+            }
+        }
+    }
 
-                if (len < 1460) {
+    private void processFrame(byte[] frameBuf, int frameLen) {
                     // MP4 recording
+                    synchronized (this) {
                     if (recording && muxer != null && muxerTrackIndex >= 0 && containsPicture(frameBuf, frameLen)) {
                         try {
                             long nowUs = System.nanoTime() / 1000;
@@ -132,6 +177,7 @@ public class TelloVideoDecoder extends Thread {
                             muxer.writeSampleData(muxerTrackIndex, ByteBuffer.wrap(frameBuf, 0, frameLen), info);
                         } catch (Exception e) { Log.e(TAG, "Muxer write: " + e.getMessage()); }
                     }
+                    }
                     // snapshot callback
                     FrameCallback cb = snapshotCallback;
                     if (cb != null) {
@@ -141,12 +187,6 @@ public class TelloVideoDecoder extends Thread {
                         snapshotCallback = null;
                     }
                     feedDecoder(frameBuf, frameLen);
-                    frameLen = 0;
-                }
-            }
-        } catch (Exception e) {
-            if (running) Log.e(TAG, "Video error: " + e.getMessage());
-        }
     }
 
     private void feedDecoder(byte[] data, int length) {

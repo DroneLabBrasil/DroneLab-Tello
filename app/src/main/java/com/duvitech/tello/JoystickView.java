@@ -149,6 +149,8 @@ public class JoystickView extends View {
             listener.onMove((int)(dx / outerRadius * 100), (int)(dy / outerRadius * 100));
     }
 
+    public void resetToCenter() { reset(); }
+
     private void reset() {
         thumbX = cx;
         thumbY = cy;

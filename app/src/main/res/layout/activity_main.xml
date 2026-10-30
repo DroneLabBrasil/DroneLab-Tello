@@ -36,13 +36,17 @@
             android:layout_height="wrap_content"
             android:layout_weight="1"
             style="@style/HudText"
-            android:text="NOT CONNECTED" />
+            android:text="SEM CONEXÃO" />
+
+        <Button android:id="@+id/btnSettings" android:layout_width="48dp" android:layout_height="32dp"
+            android:text="⚙" android:textSize="20sp" android:textColor="#FFFFFF" android:background="#44000000"
+            android:contentDescription="Configurações e calibrações do drone" />
 
         <Button
             android:id="@+id/btnSpeed"
             android:layout_width="wrap_content"
             android:layout_height="26dp"
-            android:text="SPD: MED"
+            android:text="VEL: MÉDIA"
             android:textSize="10sp"
             android:textColor="@color/textAccent"
             android:background="#44000000"
@@ -61,6 +65,11 @@
             android:paddingStart="8dp"
             android:paddingEnd="8dp" />
     </LinearLayout>
+
+    <TextView android:id="@+id/tvCalibration" android:layout_width="match_parent"
+        android:layout_height="wrap_content" android:layout_gravity="top" android:layout_marginTop="38dp"
+        android:background="#99000000" android:textColor="#FFFFFF" android:textSize="14sp"
+        android:padding="6dp" android:maxLines="3" android:visibility="gone" />
 
     <!-- Bottom controls (transparent overlay) -->
     <LinearLayout
@@ -101,7 +110,7 @@
                     android:id="@+id/btnTakeoff"
                     android:layout_width="80dp"
                     android:layout_height="44dp"
-                    android:text="TAKEOFF"
+                    android:text="DECOLAR"
                     android:textColor="#FFFFFF"
                     android:textSize="10sp"
                     android:background="#BB2ECC71"
@@ -111,7 +120,7 @@
                     android:id="@+id/btnLand"
                     android:layout_width="80dp"
                     android:layout_height="44dp"
-                    android:text="LAND"
+                    android:text="POUSAR"
                     android:textColor="#FFFFFF"
                     android:textSize="10sp"
                     android:background="#BBF39C12"
@@ -121,7 +130,7 @@
                     android:id="@+id/btnEmergency"
                     android:layout_width="60dp"
                     android:layout_height="44dp"
-                    android:text="STOP"
+                    android:text="MOTORES"
                     android:textColor="#FFFFFF"
                     android:textSize="10sp"
                     android:background="#BBE74C3C" />
@@ -144,7 +153,7 @@
                         android:id="@+id/btnPhoto"
                         android:layout_width="80dp"
                         android:layout_height="40dp"
-                        android:text="📷 PHOTO"
+                        android:text="📷 FOTO"
                         android:textSize="10sp"
                         android:textColor="#FFFFFF"
                         android:background="#5500D4FF"
@@ -169,7 +178,7 @@
                         android:id="@+id/btnSpeedUp"
                         android:layout_width="80dp"
                         android:layout_height="40dp"
-                        android:text="SPD ▲"
+                        android:text="VEL ▲"
                         android:textSize="10sp"
                         android:textColor="@color/textAccent"
                         android:background="#44000000"
@@ -179,7 +188,7 @@
                         android:id="@+id/btnSpeedDown"
                         android:layout_width="80dp"
                         android:layout_height="40dp"
-                        android:text="SPD ▼"
+                        android:text="VEL ▼"
                         android:textSize="10sp"
                         android:textColor="@color/textAccent"
                         android:background="#44000000" />

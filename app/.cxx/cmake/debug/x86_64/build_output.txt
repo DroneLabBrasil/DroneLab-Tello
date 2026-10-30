@@ -1,3 +1,0 @@
-Starting Build
-x86_64
-Configuring done

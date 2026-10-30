@@ -1,3 +1,0 @@
-Starting Build
-arm64-v8a
-Configuring done

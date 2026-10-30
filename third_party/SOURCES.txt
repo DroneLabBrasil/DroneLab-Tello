@@ -1,0 +1,9 @@
+TelloNO by MusanaINC, MIT. https://github.com/Monks103/TelloNO
+TelloPy by hanyazou and contributors, Apache-2.0.
+https://github.com/hanyazou/TelloPy
+Protocol and calibration reference revision: f74abb41845acebcc4151e31316bd221c4f00cfc
+Java calibration client is independently implemented for this adaptation.
+Ground state flag description: SMerrony/tello, MIT.
+https://github.com/SMerrony/tello
+Adaptation: TelloNO A54 experimental, 2026-10-30.
+No endorsement by Ryze, DJI, MusanaINC, TelloPy authors, or SMerrony.
