@@ -36,8 +36,9 @@ public class HomeActivity extends Activity {
                     (int) (180 * getResources().getDisplayMetrics().density)));
         }
         centeredText(content, "Drone Lab Tello", 28);
-        centeredText(content, "Versão 2.5 teste", 16);
+        centeredText(content, "Versão 2.5.2 teste", 16);
         text(content, "Conecte o telefone ao Wi-Fi do Tello antes de continuar.", 17);
+        text(content, "Ligar motores sem decolar: mantenha os dois sticks para baixo e para dentro (esquerdo ↘ e direito ↙), com o drone no solo. Solte ao receber a confirmação.", 15);
         Button fly = new Button(this);
         fly.setText("Pilotar");
         fly.setOnClickListener(v -> {

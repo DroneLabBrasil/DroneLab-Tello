@@ -314,6 +314,15 @@ public class MainActivity extends Activity implements SurfaceHolder.Callback, In
 
     private void sendRc() {
         if (!telemetryConnected || !hasWindowFocus() || (client == null && nativeClient == null)) return;
+        if (nativeClient != null) {
+            boolean gesture = com.duvitech.tello.nativeflight.MotorStartGesture.matches(touchLX, touchLY, touchRX, touchRY)
+                || com.duvitech.tello.nativeflight.MotorStartGesture.matches(padLX, padLY, padRX, padRY);
+            nativeClient.setMotorStartGesture(gesture);
+            if (gesture) {
+                sendCommand("rc 0 0 0 0");
+                return;
+            }
+        }
         float s = SCALES[speedIndex];
         int roll     = (int)((padRX != 0 ? padRX : touchRX) * s);
         int pitch    = (int)((padRY != 0 ? -padRY : -touchRY) * s);

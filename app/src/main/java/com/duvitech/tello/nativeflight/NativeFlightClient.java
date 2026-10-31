@@ -26,6 +26,38 @@ public final class NativeFlightClient implements FlightTransport {
     private volatile DatagramSocket socket;
     private volatile boolean closed, connected, video, workerRunning=true;
     private volatile long lastFlipAt;
+    private volatile long motorGestureAt;
+    private volatile boolean motorGestureInhibited;
+    private final MotorStartGesture motorGesture = new MotorStartGesture();
+    private MotorStartGesture.State motorState = MotorStartGesture.State.IDLE;
+
+    /** Must be refreshed while BOTH sticks are physically held in the gesture. */
+    public void setMotorStartGesture(boolean held) {
+        if (!held) { motorGestureAt = 0; motorGestureInhibited = false; }
+        else if (!closed) motorGestureAt = now();
+    }
+    private void cancelMotorStart() { motorGestureAt = 0; motorGestureInhibited = true; }
+    private int[] motorStartAxes(long time, boolean valid, int[] normal) {
+        if (motorGestureAt != 0 && time - motorGestureAt >= 250) cancelMotorStart();
+        boolean held = motorGestureAt != 0 && time - motorGestureAt < 250;
+        boolean allowed = !motorGestureInhibited && initialGroundSeen && onGround()
+            && battery > 20 && sensorFlags == 0 && !calibration.active() && ((rawCg >>> 3) & 3) == 0;
+        MotorStartGesture.State next = motorGesture.update(time, held, allowed,
+            valid && !flying() && height == 0 && (flags & 4) != 0);
+        if (next != motorState) {
+            motorState = next;
+            switch (next) {
+                case STARTING: listener.onMessage("Ligando motores sem decolar; mantenha os sticks para baixo e para dentro"); break;
+                case RUNNING: listener.onMessage("Motores ligados, confirmado pela telemetria. Solte os sticks"); break;
+                case BLOCKED: listener.onMessage("Ligar motores bloqueado: exige solo, motores parados, bateria >20%, sensores e telemetria válidos, sem calibração. Solte os sticks"); break;
+                case TIMEOUT: listener.onMessage("Sem confirmação dos motores após 3 s. Solte os sticks antes de tentar novamente"); break;
+                default: break;
+            }
+        }
+        if (!held) return normal;
+        // Axis order: roll, pitch, throttle, yaw. Never send takeoff (0x54).
+        return next == MotorStartGesture.State.STARTING ? new int[]{-100,-100,-100,100} : new int[4];
+    }
     private volatile int[] axes = new int[4];
     private volatile long axesAt;
     private volatile long lastFlightAt;
@@ -65,15 +97,16 @@ public final class NativeFlightClient implements FlightTransport {
         if(command.equals("command") || command.startsWith("speed "))return true;
         if(command.equals("streamon")){video=true;return true;}
         if(command.equals("streamoff")){video=false;return true;}
-        if(command.equals("land")||command.equals("emergency")){queue.clear();axes=new int[4];}
+        if(command.equals("land")||command.equals("emergency")){queue.clear();axes=new int[4];cancelMotorStart();}
         return queue.offer(command);
     }
     public boolean requestGravityCalibration() { return !closed && queue.offer("calibrate_cg"); }
     public void suspendControls() {
+        cancelMotorStart();
         axes=new int[4];axesAt=0;
         queue.removeIf(s -> !s.equals("land") && !s.equals("emergency"));
     }
-    public void close() { closed=true; axes=new int[4]; DatagramSocket s=socket; if(s!=null)s.close(); }
+    public void close() { cancelMotorStart(); closed=true; axes=new int[4]; DatagramSocket s=socket; if(s!=null)s.close(); }
 
     private void run() {
         byte[] hello={'c','o','n','n','_','r','e','q',':',0x67,0x2b}; // native video UDP11111, little endian
@@ -88,18 +121,18 @@ public final class NativeFlightClient implements FlightTransport {
                     if(lastHello==0||t-lastHello>=1000){send(hello);lastHello=t;}
                 } else {
                     boolean valid=fresh();
-                    if(lastFlightAt!=0 && !valid && !lostNotified){lostNotified=true;axes=new int[4];hoverSince=0;calibration.interrupt();listener.onTelemetry(battery,height,flying(),false);listener.onMessage("Telemetria desatualizada; controles neutros. Pousar continua disponível.");}
+                    if(lastFlightAt!=0 && !valid && !lostNotified){lostNotified=true;cancelMotorStart();axes=new int[4];hoverSince=0;calibration.interrupt();listener.onTelemetry(battery,height,flying(),false);listener.onMessage("Telemetria desatualizada; controles neutros. Pousar continua disponível.");}
                     if(valid)lostNotified=false;
                     if(lastFlightAt!=0 && t-lastFlightAt>3000) {
                         // Power cycle or radio loss: negotiate again on this Wi-Fi socket.
                         // Never replay actions from the old drone/session.
-                        listener.onSessionReset();
+                        cancelMotorStart();listener.onSessionReset();
                         calibration.interrupt();publishCalibration();calibration.reset();announced=GravityCalibrationTracker.State.IDLE;
                         queue.clear();axes=new int[4];axesAt=0;initialGroundSeen=false;cgUsed=false;hoverSince=0;lastFlipAt=0;
                         lastFlightAt=0;connected=false;start=t;lastHello=0;lastVideo=0;
                         continue;
                     }
-                    if(t-lastStick>=50){int[] a=valid && t-axesAt<250 ? axes : new int[4];sendPacket(0x50,0x60,sticks(a));lastStick=t;}
+                    if(t-lastStick>=50){int[] a=valid && t-axesAt<250 ? axes : new int[4];sendPacket(0x50,0x60,sticks(motorStartAxes(t,valid,a)));lastStick=t;}
                     if(video && t-lastVideo>=1000){sendPacket(0x25,0x60,new byte[0]);lastVideo=t;}
                     String command=queue.poll();if(command!=null)handleCommand(command,t);
                     calibration.tick(t);publishCalibration();
@@ -149,7 +182,7 @@ public final class NativeFlightClient implements FlightTransport {
     }
     private void handleCommand(String command,long time)throws IOException {
         if(command.equals("land")||command.equals("emergency")) {
-            calibration.interrupt();publishCalibration();axes=new int[4];
+            cancelMotorStart();calibration.interrupt();publishCalibration();axes=new int[4];
             if(command.equals("land"))sendPacket(0x55,0x68,new byte[]{0});
             else send("emergency".getBytes(StandardCharsets.US_ASCII));
         } else if(command.equals("takeoff")) {
